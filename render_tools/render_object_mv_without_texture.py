@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 parser = argparse.ArgumentParser(description='Renders given obj file by rotation a camera around it.')
-parser.add_argument('--views', type=int, default=12,
+parser.add_argument('--views', type=int, default=24,
                     help='number of views to be rendered')
 parser.add_argument('input_folder', type=str,
                     help='The path to where obj file and texture file stored')
@@ -162,7 +162,7 @@ def render_function(model_dir):
 
         # render image by views
         pose_dict = {}
-        for i in range(12):
+        for i in range(args.views):
             print("Rotation {}, {}".format((stepsize * i), radians(stepsize * i)))
             save_dir = os.path.join(args.output_folder, model_id)
             if os.path.exists(save_dir) == False: os.makedirs(save_dir)

@@ -34,6 +34,7 @@ for i in range(len(shapes)):
 
 feat_bank = np.stack(feat_bank)
 shape_num = len(feat_bank)
+views = 24
 top_k_count = 0
 pose_count = 0
 cate_count = 0
@@ -67,7 +68,7 @@ with open('retrieval_results.txt', 'w') as f:
         l2_dis = np.sqrt(np.sum((feat_3d_norm - feat_2d_norm)**2, axis=1))
         
         # collect distance 
-        sample_dist = np.reshape(np.around(l2_dis, decimals=3), (-1, 12))
+        sample_dist = np.reshape(np.around(l2_dis, decimals=3), (-1, views))
         dist_value_float = np.amin(sample_dist, axis=1)
         dist_value = ['{:.4}'.format(item) for item in dist_value_float]
         #dist_value = ['{:f}'.format(item) for item in sample_dist]

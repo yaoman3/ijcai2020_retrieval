@@ -67,12 +67,7 @@ class Mapper(nn.Module):
 
 
 class RetrievalDataset(Dataset):
-    def __init__(self, image_dir, model_dir, train_set=None, negative_size=2):
-        images = os.listdir(image_dir)
-        images.sort()
-        shapes = sorted(glob.glob(model_dir + '/*.npy'))
-        shape_feats, shape_list = load_shapes(model_dir, shapes)
-        image_feats = load_images(image_dir, images)
+    def __init__(self, image_feats, shape_feats, shape_list, train_set=None, negative_size=2, offset=0):
         self.image_feats = image_feats
         self.shape_feats = shape_feats
         self.train_set = train_set
@@ -86,6 +81,7 @@ class RetrievalDataset(Dataset):
                 self.train_set = sorted(train_info, key=lambda x: x['image'])
         else:
             self.train_set = None
+        self.offset = offset
 
 
     def __len__(self):
@@ -101,7 +97,8 @@ class RetrievalDataset(Dataset):
         else:
             k = idx // self.sample_size
         x = self.image_feats[k]
-        if self.train_set is not None:
+        k += self.offset
+        if self.train_set is not None and self.offset==0:
             if idx % self.sample_size == 0:
                 return (np.concatenate((x, self.shape_feats[self.shape_index[self.train_set[k]['model']]]), axis=0), 1.0)
             else:
@@ -109,9 +106,15 @@ class RetrievalDataset(Dataset):
                     i = random.choice(range(len(self.shape_feats)))
                     if self.train_set is None or i != self.shape_index[self.train_set[k]['model']]:
                         return (np.concatenate((x, self.shape_feats[i]), axis=0), 0.0)
+        elif self.train_set is not None:
+            i = idx % len(self.shape_feats)
+            if i == self.shape_index[self.train_set[k]['model']]:
+                return (np.concatenate((x, self.shape_feats[i]), axis=0), 1.0)
+            else:
+                return (np.concatenate((x, self.shape_feats[i]), axis=0), 0.0)
         else:
             i = idx % len(self.shape_feats)
-            return np.concatenate((x, self.shape_feats[i]))
+            return np.concatenate((x, self.shape_feats[i]), axis=0)
 
 
 if __name__ == "__main__":
@@ -122,19 +125,31 @@ if __name__ == "__main__":
         train_set = args.train_set
     else:
         train_set = None
-    dataset = RetrievalDataset(args.image_dir, args.model_dir, train_set)
-    dataloader = DataLoader(dataset, batch_size=1000, shuffle=args.train)
     if torch.cuda.is_available():
         device = 'cuda'
     else:
         device = 'cpu'
     model = model.to(device)
     if args.train:
+        images = os.listdir(args.image_dir)
+        images.sort()
+        shapes = sorted(glob.glob(args.model_dir + '/*.npy'))
+        shape_feats, shape_list = load_shapes(args.model_dir, shapes)
+        image_feats = load_images(args.image_dir, images)
+        val_offset = int(len(images)*0.8)
+        train_feats = image_feats[:val_offset]
+        val_feats = image_feats[val_offset:]
+        train_data = RetrievalDataset(train_feats, shape_feats, shape_list, train_set)
+        trainloader = DataLoader(train_data, batch_size=1000, shuffle=args.train)
+        val_data = RetrievalDataset(val_feats, shape_feats, shape_list, train_set, offset=val_offset)
+        valloader = DataLoader(val_data, batch_size=len(shape_feats))
         criterion = nn.BCELoss()
         optimizer = optim.Adam(model.parameters(), lr=0.0001)
-        for epoch in range(10):
+        model.train()
+        min_loss = float('inf')
+        for epoch in range(30):
             running_loss = 0.0
-            for i, data in enumerate(dataloader):
+            for i, data in enumerate(trainloader):
                 inputs, labels = data
                 inputs = inputs.to(device)
                 labels = labels.float().to(device)
@@ -144,20 +159,42 @@ if __name__ == "__main__":
                 loss.backward()
                 optimizer.step()
                 running_loss += loss.item()
-                if i % 100 == 99:
-                    print('[%d, %d] loss: %.5f' % (epoch+1, i+1, running_loss/100))
+                if i % 10 == 9:
+                    model.eval()
+                    val_loss = 0.0
+                    cnt = 0
+                    for tmp in valloader:
+                        inputs, labels = tmp
+                        inputs = inputs.to(device)
+                        labels = labels.float().to(device)
+                        outputs = model(inputs)
+                        loss = criterion(outputs, labels.view(-1, 1))
+                        val_loss += loss.item()
+                        cnt += 1
+                    print('[%d, %d] train loss: %.5f, val loss: %.5f' % (epoch+1, i+1, running_loss/100, val_loss/cnt))
+                    if val_loss<min_loss:
+                        min_loss = val_loss
+                        torch.save(model.state_dict(), 'checkpoints/eval_models.pth')
                     running_loss = 0.0
-        torch.save(model.state_dict(), 'checkpoints/eval_models.pth')
+                    model.train()
     else:
+        images = os.listdir(args.image_dir)
+        images.sort()
+        shapes = sorted(glob.glob(args.model_dir + '/*.npy'))
+        shape_feats, shape_list = load_shapes(args.model_dir, shapes)
+        image_feats = load_images(args.image_dir, images)
+        dataset = RetrievalDataset(image_feats, shape_feats, shape_list, train_set)
+        dataloader = DataLoader(dataset, batch_size=1000, shuffle=args.train)
         model.load_state_dict(torch.load('checkpoints/eval_models.pth'))
         model.eval()
         images = os.listdir(args.image_dir)
         images.sort()
-        results = np.array([])
+        results = []
         for data in tqdm(dataloader):
             inputs = data.to(device)
             outputs = model(inputs)
-            results = np.concatenate((results, np.reshape(outputs.cpu().detach().numpy(), -1)), axis=0)
+            results.append(np.reshape(outputs.cpu().detach().numpy(), -1))
+        results = np.concatenate(results, axis=0)
         results = 1 - np.reshape(results, (len(images), -1))
         with open(args.predict_out, 'w') as f:
             for i in tqdm(range(len(images))):

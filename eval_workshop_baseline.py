@@ -34,7 +34,7 @@ for i in range(len(shapes)):
 
 feat_bank = np.stack(feat_bank)
 shape_num = len(feat_bank)
-views = 24
+views = 3*24
 top_k_count = 0
 pose_count = 0
 cate_count = 0
@@ -45,6 +45,9 @@ eval_view = 0
 count = 0
 top_3_count = 0
 top_10_count = 10
+
+feat_bank_temp = feat_bank.copy()
+feat_3d_norm = normalize_rows(feat_bank_temp)
 
 with open('retrieval_results.txt', 'w') as f:
     for i in tqdm(range(len(shape_infos))):
@@ -59,9 +62,7 @@ with open('retrieval_results.txt', 'w') as f:
         query_feat = feat['feat_query'][0,:]
         pred_cate = feat['pred_cate'][0,:]
         
-        feat_bank_temp = feat_bank.copy()
         feat_2d_norm = normalize_rows(query_feat)
-        feat_3d_norm = normalize_rows(feat_bank_temp)
         
         #pdb.set_trace()
         #top_k = cos_similarity(feat_2d_norm, feat_3d_norm)
@@ -72,23 +73,24 @@ with open('retrieval_results.txt', 'w') as f:
         dist_value_float = np.amin(sample_dist, axis=1)
         dist_value = ['{:.4}'.format(item) for item in dist_value_float]
         #dist_value = ['{:f}'.format(item) for item in sample_dist]
-        dist_str = ''
-        for index, value in enumerate(dist_value):
-            if index == len(dist_value) - 1:
-                dist_str += value + '\n'
-            else:
-                dist_str += value + ', '
+        dist_str = ', '.join(dist_value)
+        dist_str += '\n'
+        # for index, value in enumerate(dist_value):
+        #     if index == len(dist_value) - 1:
+        #         dist_str += value + '\n'
+        #     else:
+        #         dist_str += value + ', '
        
         line = image_name + ': ' + dist_str
         f.write(line)
 
 
-        top_k = np.argsort(l2_dis)
+        # top_k = np.argsort(l2_dis)
 
-        top_k = top_k[0:20]
-        top_k_id = []
-        for j in range(len(top_k)):
-            top_k_id.append(shape_pool[top_k[j]])
+        # top_k = top_k[0:20]
+        # top_k_id = []
+        # for j in range(len(top_k)):
+        #     top_k_id.append(shape_pool[top_k[j]])
         
 f.close()
 #np.save('top20_retrieval_workshop_baseline_v1_256.npy', retrieval_results)

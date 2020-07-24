@@ -7,7 +7,8 @@ import glob
 import pdb
 import torch
 from tqdm import tqdm
-from models import networks
+from options.test_options import TestOptions
+from models import create_model
 
 def normalize_rows(x):
     return x / np.linalg.norm(x, ord=2, axis=-1, keepdims=True)
@@ -52,9 +53,25 @@ top_10_count = 10
 feat_bank_temp = feat_bank.copy()
 # feat_3d_norm = normalize_rows(feat_bank_temp)
 
-model = networks.define_retrieval_nets(opt, net_option='match_estimator', gpu_ids=self.gpu_ids)
-model.load_state_dict(torch.load('checkpoints/workshop_baseline_notexture_tuning_v1/latest_net__match_estimator.pth'))
+opt = TestOptions().parse()  # get test options
+# hard-code some parameters for test
+opt.level2_dic = 'level2_dic_v1.npy'
+opt.level3_dic = 'level3_dic_v1.npy'
+opt.dataset_name = '3d_validation_set.npy' 
+opt.inplanes = 64
+opt.reverse = True
+opt.pose_num = 12
+opt.num_threads = 0   # test code only supports num_threads = 1
+opt.batch_size = 1    # test code only supports batch_size = 1
+opt.serial_batches = True  # disable data shuffling; comment this line if results on randomly chosen images are needed.
+opt.no_flip = True    # no flip; comment this line if results on flipped images are needed.
+opt.display_id = -1   # no visdom display; the test code saves the results to a HTML file.
+model = create_model(opt)      # create a model given opt.model and other options
+model.setup(opt)               # regular setup: load and print networks; create schedulers
+opt.phase = 'eval'
+
 model.eval()
+ 
 
 with open('retrieval_results.txt', 'w') as f:
     for i in tqdm(range(len(shape_infos))):
@@ -70,7 +87,7 @@ with open('retrieval_results.txt', 'w') as f:
         x = query_feat.expand(shape_num, query_feat.size(0))
         x = torch.cat((x, feat_bank), dim=1)
         with torch.no_grad():
-            out = model(x)
+            out = model.net_match_estimator(x)
         out = 1-torch.sigmoid(out)
         result = out.cpu().detach().tolist()
        

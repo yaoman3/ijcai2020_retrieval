@@ -94,9 +94,9 @@ class BaseModel(ABC):
             if isinstance(name, str):
                 net = getattr(self, 'net' + name)
                 net.eval()
-    def retrieval_eval(self):
+    def retrieval_eval(self, datamode='2D'):
         with torch.no_grad():
-            return self.forward_eval()
+            return self.forward_eval(datamode)
     def test(self):
         """Forward function used in test time.
 

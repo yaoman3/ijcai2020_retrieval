@@ -31,23 +31,26 @@ class RetrievalWorkshopBaselineTuningModel(BaseModel):
         self.pose_center_corr = 0.0
 
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['query_center', 'query_cate', 'metric', 'triplet'] #, 'mask', 'G', 'D']
+        self.loss_names = ['query_center', 'query_cate', 'metric', 'positive', 'negative'] #, 'mask', 'G', 'D']
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>.
         if self.isTrain:
-            self.model_names = ['_backbone', '_further_conv', '_cate_estimator', '_center_estimator'] 
+            self.model_names = ['_backbone', '_backbone_3d', '_further_conv', '_cate_estimator', '_center_estimator', '_further_conv3d', '_match_estimator'] 
         else:  # during test time, only load Gs
-            self.model_names = ['_backbone', '_further_conv', '_cate_estimator', '_center_estimator']
+            self.model_names = ['_backbone', '_backbone_3d', '_further_conv', '_cate_estimator', '_center_estimator', '_further_conv3d', '_match_estimator']
 
         # define networks (both Generators and discriminators)
         # The naming is different from those used in the paper.
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
         self.net_backbone = networks.define_retrieval_nets(opt, net_option='resnet34_pytorch', gpu_ids=self.gpu_ids)
+        self.net_backbone_3d = networks.define_retrieval_nets(opt, net_option='resnet3d', gpu_ids=self.gpu_ids)
         self.net_further_conv = networks.define_retrieval_nets(opt, net_option='further_conv', gpu_ids=self.gpu_ids)
+        self.net_further_conv3d = networks.define_retrieval_nets(opt, net_option='further_conv3d', gpu_ids=self.gpu_ids)
         opt.input_dim = 256
         opt.cate_num = 5202
         self.net_center_estimator = networks.define_retrieval_nets(opt, net_option='cate_estimator', gpu_ids=self.gpu_ids)
         opt.cate_num = 7
         self.net_cate_estimator = networks.define_retrieval_nets(opt, net_option='cate_estimator', gpu_ids=self.gpu_ids)
+        self.net_match_estimator = networks.define_retrieval_nets(opt, net_option='match_estimator', gpu_ids=self.gpu_ids)
         self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))
         self.softmax = torch.nn.Softmax(dim=-1)
         self.l2norm = Normalize(2) 
@@ -60,6 +63,7 @@ class RetrievalWorkshopBaselineTuningModel(BaseModel):
             self.criterionSoftmax  = torch.nn.CrossEntropyLoss()
             self.criterionMetric = losses.TripletMarginLoss(triplets_per_anchor="all")
             self.criterionTriplet = torch.nn.TripletMarginLoss(margin=1.0, p=2.0)
+            self.criterionSigmoid = torch.nn.BCEWithLogitsLoss()
             self.optimizer = torch.optim.SGD(itertools.chain(self.net_backbone.parameters(), self.net_further_conv.parameters(), self.net_center_estimator.parameters(), self.net_cate_estimator.parameters()), lr=opt.lr, momentum=0.9, weight_decay=1e-4)
             self.optimizers.append(self.optimizer)
 
@@ -78,8 +82,12 @@ class RetrievalWorkshopBaselineTuningModel(BaseModel):
         self.cate_feat, self.query_cate_score = self.net_cate_estimator(query_backbone_feat, return_feat=True)
         self.query_center_score = self.net_center_estimator(query_backbone_feat)
 
-        self.positive_feat, _ = self.net_cate_estimator(self.net_further_conv(self.net_backbone(self.input_positive)), return_feat=True)
-        self.negative_feat, _ = self.net_cate_estimator(self.net_further_conv(self.net_backbone(self.input_negative)), return_feat=True)
+        # self.positive_feat, _ = self.net_cate_estimator(self.net_further_conv(self.net_backbone(self.input_positive)), return_feat=True)
+        # self.negative_feat, _ = self.net_cate_estimator(self.net_further_conv(self.net_backbone(self.input_negative)), return_feat=True)
+        self.positive_feat = self.net_further_conv3d(self.net_backbone_3d(self.input_positive))
+        self.negative_feat = self.net_further_conv3d(self.net_backbone_3d(self.input_negative))
+        self.positive_score = self.net_match_estimator(query_backbone_feat, self.positive_feat)
+        self.negative_score = self.net_match_estimator(query_backbone_feat, self.negative_feat)
 
     def backward(self):
         """Calculate the loss"""
@@ -87,9 +95,12 @@ class RetrievalWorkshopBaselineTuningModel(BaseModel):
         self.loss_query_cate = self.criterionSoftmax(self.query_cate_score, self.label_cate)*0.5
         self.loss_query_center = self.criterionSoftmax(self.query_center_score, self.label_center)*1.0
         self.loss_metric = self.criterionMetric(self.cate_feat, self.label_cate)*0.5
+        self.loss_positive = self.criterionSigmoid(self.positive_score, torch.ones((self.positive_score.size(0), 1), device=self.positive_score.device))
+        self.loss_negative = self.criterionSigmoid(self.negative_score, torch.zeros((self.negative_score.size(0), 1), device=self.negative_score.device))
 
-        self.loss_triplet = self.criterionTriplet(self.l2norm(self.cate_feat), self.l2norm(self.positive_feat), self.l2norm(self.negative_feat))*5.0
-        self.loss = self.loss_query_cate + self.loss_query_center + self.loss_metric + self.loss_triplet # + self.loss_mask + self.loss_G 
+        # self.loss_triplet = self.criterionTriplet(self.l2norm(self.cate_feat), self.l2norm(self.positive_feat), self.l2norm(self.negative_feat))*5.0
+        # self.loss = self.loss_query_cate + self.loss_query_center + self.loss_metric + self.loss_triplet # + self.loss_mask + self.loss_G 
+        self.loss = self.loss_query_cate + self.loss_query_center + self.loss_metric + self.loss_positive + self.loss_negative
 
         _, max_cate = torch.max(self.query_cate_score.data, 1)
         cate_corr = torch.sum(max_cate == self.label_cate.data)
@@ -101,11 +112,15 @@ class RetrievalWorkshopBaselineTuningModel(BaseModel):
         
         self.loss.backward()
     
-    def forward_eval(self):
+    def forward_eval(self, datamode='2D'):
         ################ 3d data without mask
-        query_backbone_feat = self.net_further_conv(self.net_backbone(self.input_query))
-        self.cate_feat, self.query_cate_score = self.net_cate_estimator(query_backbone_feat, return_feat=True)
-        return self.cate_feat, self.query_cate_score
+        if datamode=='3D':
+            query_backbone_feat = self.net_further_conv3d(self.net_backbone_3d(self.input_query))
+        else:
+            query_backbone_feat = self.net_further_conv(self.net_backbone(self.input_query))
+        # self.cate_feat, self.query_cate_score = self.net_cate_estimator(query_backbone_feat, return_feat=True)
+        # return self.cate_feat, self.query_cate_score
+        return query_backbone_feat
 
     def set_input_eval(self, input):
         self.input_query = input['query_img'].to(self.device)

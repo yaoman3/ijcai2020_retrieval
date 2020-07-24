@@ -251,8 +251,8 @@ def compute_norm_original_ratio(pix3d_original_vertex, pix3d_norml_vertex):
     print(np.min(pix3d_norml_vertex[:, 2]), np.max(pix3d_norml_vertex[:, 2]))
 
 def main():
-    workshop_dir = '/home/public/IJCAI_2020_retrieval/validation/model/'
-    save_dir = '/home/public/IJCAI_2020_retrieval/validation/normalized_model/'
+    workshop_dir = '/home/public/IJCAI_2020_retrieval/train/model/'
+    save_dir = '/home/public/IJCAI_2020_retrieval/train/normalized_model/'
 
     if not os.path.exists(save_dir): os.makedirs(save_dir)
 

@@ -135,10 +135,18 @@ def define_retrieval_nets(opt, net_option, init_type='normal', init_gain=0.02, g
         orig_model = models.__dict__['resnet34'](pretrained=True)
         net = ResNetPytorch(orig_model)
         init = False
+    elif net_option == 'resnet3d':
+        orig_model = models.video.r3d_18(pretrained=True)
+        net = ResNet3D(orig_model)
+        init = False
     elif net_option == 'cate_estimator':
         net = CateEstimation(opt, cate_num=opt.cate_num)
     elif net_option == 'further_conv':
         net = FurtherConv(opt, pose_num=opt.pose_num)
+    elif net_option == 'further_conv3d':
+        net = FurtherConv3D(opt, pose_num=opt.pose_num)
+    elif net_option == 'match_estimator':
+        net = MatchEstimation(opt, pose_num=opt.pose_num)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % net_option)
     return init_net(net, init_type, init_gain, gpu_ids, init=init)
@@ -172,6 +180,28 @@ class ResNetPytorch(nn.Module):
         return [x]
 
 
+class ResNet3D(nn.Module):
+    def __init__(self, orig_model):
+        super(ResNet3D, self).__init__()
+        self.layer0 = orig_model.stem
+        self.layer1 = orig_model.layer1
+        self.layer2 = orig_model.layer2
+        self.layer3 = orig_model.layer3
+        self.layer4 = orig_model.layer4
+
+    def forward(self, x, return_feature_maps=False):
+        conv_out = []
+        x = self.layer0(x)
+        x = self.layer1(x); conv_out.append(x)
+        x = self.layer2(x); conv_out.append(x)
+        x = self.layer3(x); conv_out.append(x)
+        x = self.layer4(x); conv_out.append(x)
+        if return_feature_maps:
+            return conv_out
+        return [x]
+
+
+
 class Normalize(nn.Module):
 
     def __init__(self, power=2):
@@ -182,6 +212,7 @@ class Normalize(nn.Module):
         norm = x.pow(self.power).sum(1, keepdim=True).pow(1./self.power)
         out = x.div(norm)
         return out
+
 
 class FurtherConv(nn.Module):
     def __init__(self, opt, pose_num=12, hidden_dim=512):
@@ -195,6 +226,40 @@ class FurtherConv(nn.Module):
     def forward(self, conv_out, return_feat=False):
         f = self.fpn_last_conv(conv_out[-1])
         return [f]
+
+
+class FurtherConv3D(nn.Module):
+    def __init__(self, opt, pose_num=12, hidden_dim=512):
+        super(FurtherConv3D, self).__init__()
+        self.fpn_last_conv = nn.Sequential(
+                nn.Conv3d(512, 256, kernel_size=1, bias=False),
+                nn.BatchNorm3d(256),
+                nn.ReLU(inplace=True)
+            )
+    
+    def forward(self, conv_out, return_feat=False):
+        f = self.fpn_last_conv(conv_out[-1])
+        return [f]
+
+
+class MatchEstimation(nn.Module):
+    def __init__(self, opt, pose_num=12, hidden_dim=512):
+        super(MatchEstimation, self).__init__()
+        self.avgpool2d = nn.AdaptiveAvgPool2d((1, 1))
+        self.avgpool3d = nn.AdaptiveAvgPool3d((1, 1, 1))
+        self.dropout = nn.Dropout()
+        self.fc = nn.Linear(opt.input_dim*2, 1)
+
+    def forward(self, conv_out_2d, conv_out_3d, return_feat=False):
+        x1 = self.avgpool2d(conv_out_2d[-1])
+        x2 = self.avgpool3d(conv_out_3d[-1])
+        x1 = x1.view(x1.size(0), -1)
+        x2 = x2.view(x2.size(0), -1)
+        x = torch.cat((x1, x2), dim=1)
+        x = self.dropout(x)
+        x = self.fc(x)
+        return x
+
 
 class CateEstimation(nn.Module):
     def __init__(self, opt, cate_num=12):

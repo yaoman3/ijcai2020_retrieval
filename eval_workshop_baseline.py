@@ -17,7 +17,7 @@ def cos_similarity(query_feat, pool_feats):
     return top_k
 
 #pdb.set_trace()
-shape_infos = os.listdir(os.path.join('dataset/test_data', 'input_data'))
+shape_infos = os.listdir(os.path.join('/home/public/IJCAI_2020_retrieval/test', 'input_data'))
 if '.DS_Store' in shape_infos: shape_infos.remove('.DS_Store')
 shape_infos.sort()
 
@@ -34,7 +34,7 @@ for i in range(len(shapes)):
 
 feat_bank = np.stack(feat_bank)
 shape_num = len(feat_bank)
-views = 3*24
+views = 12
 top_k_count = 0
 pose_count = 0
 cate_count = 0

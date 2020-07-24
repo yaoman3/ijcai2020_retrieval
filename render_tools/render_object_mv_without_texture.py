@@ -162,18 +162,22 @@ def render_function(model_dir):
 
         # render image by views
         pose_dict = {}
-        for i in range(args.views):
-            print("Rotation {}, {}".format((stepsize * i), radians(stepsize * i)))
-            save_dir = os.path.join(args.output_folder, model_id)
-            if os.path.exists(save_dir) == False: os.makedirs(save_dir)
+        ss = 0
+        for k in [0, 30, 150]:
+            b_empty.rotation_euler[0] += radians(k)
+            ss += k
+            for i in range(args.views):
+                print("Rotation {}, {}".format((stepsize * i), radians(stepsize * i)))
+                save_dir = os.path.join(args.output_folder, model_id)
+                if os.path.exists(save_dir) == False: os.makedirs(save_dir)
 
-            scene.render.filepath = os.path.join(save_dir, 'image_' + '{0:03d}'.format(int(i * stepsize)))                              # rgb
-            depth_file_output.file_slots[0].path = os.path.join(save_dir, 'depth_' + '{0:03d}'.format(int(i * stepsize)) + '_')         # depth
-            normal_file_output.file_slots[0].path = os.path.join(save_dir, 'normal_' + '{0:03d}'.format(int(i * stepsize)) + '_')       # normal
-            #albedo_file_output.file_slots[0].path = os.path.join(save_dir, 'mask_' + '{0:03d}'.format(int(i * stepsize)) + '_')         # mask
+                scene.render.filepath = os.path.join(save_dir, 'image_{0:03d}_{1:03d}'.format(ss, int(i * stepsize)))                              # rgb
+                # depth_file_output.file_slots[0].path = os.path.join(save_dir, 'depth_' + '{0:03d}'.format(int(i * stepsize)) + '_')         # depth
+                # normal_file_output.file_slots[0].path = os.path.join(save_dir, 'normal_' + '{0:03d}'.format(int(i * stepsize)) + '_')       # normal
+                #albedo_file_output.file_slots[0].path = os.path.join(save_dir, 'mask_' + '{0:03d}'.format(int(i * stepsize)) + '_')         # mask
 
-            bpy.ops.render.render(write_still=True)  # render still
-            b_empty.rotation_euler[2] += radians(stepsize)
+                bpy.ops.render.render(write_still=True)  # render still
+                b_empty.rotation_euler[2] += radians(stepsize)
 
         # clear sys
         for object in bpy.context.scene.objects:
@@ -184,5 +188,7 @@ def render_function(model_dir):
         bpy.ops.object.delete()
 
 ###### render model images
+# model_dir = '/home/public/IJCAI_2020_retrieval/train/normalized_model/'
+# model_dir = '/home/ymli/workspace/FUTURE3D-AI-Challenge-Baseline/retrieval/dataset/debug/normalized_model/'
 model_dir = '/home/public/IJCAI_2020_retrieval/validation/normalized_model/'
 render_function(model_dir)

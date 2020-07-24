@@ -38,13 +38,14 @@ if __name__ == '__main__':
     for i, data in enumerate(dataset):
         model.set_input_eval(data)
         shape_id = data['shape_id'][0]
-        image_name = data['image_name'][0]
+        # image_name = data['image_name'][0]
         
         # 3d
-        result_query_file = os.path.join(opt.result_query_dir, shape_id + '_' + image_name + '.npy')
+        # result_query_file = os.path.join(opt.result_query_dir, shape_id + '_' + image_name + '.npy')
+        result_query_file = os.path.join(opt.result_query_dir, shape_id + '.npy')
 
-        query_feat, pred_cate = model.retrieval_eval()
-        feat = {'feat_query':query_feat.cpu().detach().numpy(), 'pred_cate':pred_cate.cpu().detach().numpy(), 'shape_id':data['shape_id'][0]}
+        query_feat = model.retrieval_eval('3D')
+        feat = {'feat_query':query_feat.cpu().detach().numpy(), 'shape_id':data['shape_id'][0]}
         
         np.save(result_query_file, feat)
         

@@ -42,7 +42,9 @@ if __name__ == '__main__':
         # 2d
         result_query_file = os.path.join(opt.result_query_dir, image_name + '.npy')
 
-        query_feat, pred_cate = model.retrieval_eval()
-        feat = {'feat_query':query_feat.cpu().detach().numpy(), 'pred_cate':pred_cate.cpu().detach().numpy()}
-        
+        # query_feat, pred_cate = model.retrieval_eval()
+        # feat = {'feat_query':query_feat.cpu().detach().numpy(), 'pred_cate':pred_cate.cpu().detach().numpy()}
+        query_feat = model.retrieval_eval()
+        feat = query_feat.cpu().detach().numpy()
+
         np.save(result_query_file, feat)

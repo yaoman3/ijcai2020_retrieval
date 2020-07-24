@@ -18,13 +18,14 @@ class RetrievalWorkshopBaselineEval3DDataset(BaseDataset):
         BaseDataset.__init__(self, opt)
         
         # 3d feature
-        self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)
+        # self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)
 
         self.phase = opt.phase
-        self.data_size = len(self.shapes_info)
         
         self.input_2d_path = os.path.join(opt.dataroot, 'input_data')
         self.input_3d_path = os.path.join(opt.dataroot, 'notexture_pool_data')
+        self.shapes_info = os.listdir(self.input_3d_path)
+        self.data_size = len(self.shapes_info)
 
         self.query_transform = transforms.Compose([
                 transforms.Resize(256),
@@ -39,13 +40,14 @@ class RetrievalWorkshopBaselineEval3DDataset(BaseDataset):
 
     def __getitem__(self, index):
 
-        shape_info = self.shapes_info[index % self.data_size]
+        shape_id = self.shapes_info[index % self.data_size]
     
         # 3d feature data
-        shape_id = shape_info['shape_id']
-        image_name = shape_info['image']
+        # shape_id = shape_info['shape_id']
+        # image_name = shape_info['image']
         
-        query_img = self._load_3d_image(shape_id, image_name)
+        # query_img = self._load_3d_image(shape_id, image_name)
+        query_img = self._load_3d_image(shape_id)
         
         center_label = 0
         cate_label = 0
@@ -67,6 +69,18 @@ class RetrievalWorkshopBaselineEval3DDataset(BaseDataset):
         img = Image.open(img_file).convert('RGB') 
         trans_img = self.query_transform(img)
         return trans_img
+
+
+    def _load_3d_image(self, shape_info):
+        files = glob.glob(os.path.join(self.input_3d_path, shape_id, 'image_*.png'))
+        images = []
+        for img_file in files:
+            img = Image.open(img_file).convert('RGB')
+            trans_img = self.query_transform(img)
+            images.append(trans_img)
+        model = torch.stack(images)
+        return model.permute(1, 0, 2, 3)
+
     
     def _load_2d_image(self, image_name):
         img_file = os.path.join(self.input_2d_path, image_name)

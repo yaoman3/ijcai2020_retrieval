@@ -2,6 +2,7 @@ import os.path
 from data.base_dataset import BaseDataset, get_transform
 from data.image_folder import make_dataset
 import random
+import json
 import numpy as np
 from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -10,6 +11,7 @@ import torchvision.transforms as transforms
 import pdb
 import torch
 import cv2
+import glob
 
 from util.smart_crop_transforms import RandomCropDramaticlly
 from util import augment
@@ -17,23 +19,51 @@ from util import augment
 class RetrievalWorkshopBaselineDataset(BaseDataset):
     def __init__(self, opt):
         BaseDataset.__init__(self, opt)
-        opt.dataset_name = 'train_set.npy'
-        opt.level3_dic = 'level3_dict.npy'
-        opt.level2_dic = 'level2_dict.npy'
+        # opt.dataset_name = 'train_set.npy'
+        opt.dataset_name = 'train_set.json'
+        # opt.level3_dic = 'level3_dict.npy'
+        # opt.level2_dic = 'level2_dict.npy'
 
-        if opt.phase != 'train':
-            if opt.reverse:
-                self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)[::-1]
-            else:
-                self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)
-        else:
-            if opt.reverse:
-                self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)[::-1]
-            else:
-                self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)
+        # if opt.phase != 'train':
+        #     if opt.reverse:
+        #         self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)[::-1]
+        #     else:
+        #         self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)
+        # else:
+        #     if opt.reverse:
+        #         self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)[::-1]
+        #     else:
+        #         self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)
+        with open(os.path.join(opt.dataroot, 'data_info', opt.dataset_name)) as f:
+            self.shapes_info = json.load(f)
 
-        self.level3_dic = np.load(os.path.join(opt.dataroot, 'data_info', opt.level3_dic), allow_pickle=True).item()
-        self.level2_dic = np.load(os.path.join(opt.dataroot, 'data_info', opt.level2_dic), allow_pickle=True).item() 
+        # self.level3_dic = np.load(os.path.join(opt.dataroot, 'data_info', opt.level3_dic), allow_pickle=True).item()
+        # self.level2_dic = np.load(os.path.join(opt.dataroot, 'data_info', opt.level2_dic), allow_pickle=True).item() 
+
+        level2_dic = {}
+        level3_dic = {}
+        self.level2_mapping = {}
+        self.level3_mapping = {}
+        for i in range(len(self.shapes_info)):
+            if self.shapes_info[i]['category'] not in level2_dic:
+                level2_dic[self.shapes_info[i]['category']] = set()
+            if self.shapes_info[i]['fine-grained category'] not in level3_dic:
+                level3_dic[self.shapes_info[i]['fine-grained category']] = set()
+            level2_dic[self.shapes_info[i]['category']].add(self.shapes_info[i]['model'])
+            level3_dic[self.shapes_info[i]['fine-grained category']].add(self.shapes_info[i]['model'])
+        level2_keys = list(level2_dic.keys())
+        level3_keys = list(level3_dic.keys())
+        for i in range(len(level2_keys)):
+            self.level2_mapping[level2_keys[i]] = i
+        for i in range(len(level3_keys)):
+            self.level3_mapping[level3_keys[i]] = i
+
+        self.level2_dic = {}
+        self.level3_dic = {}
+        for k, v in level2_dic.items():
+            self.level2_dic[self.level2_mapping[k]] = list(v)
+        for k, v in level3_dic.items():
+            self.level3_dic[self.level3_mapping[k]] = list(v)
         
         self.level2_keys = list(self.level2_dic.keys())
         self.phase = opt.phase
@@ -41,7 +71,7 @@ class RetrievalWorkshopBaselineDataset(BaseDataset):
         random.shuffle(self.shapes_info)
         
         self.unorm = UnNormalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
-        self.real_image_path = os.path.join(opt.dataroot, 'image_data')
+        self.real_image_path = os.path.join(opt.dataroot, 'input_data')
         self.bicycle_image_path = os.path.join(opt.dataroot, 'notexture_pool_data')
         
         self.query_transform = transforms.Compose([
@@ -81,8 +111,8 @@ class RetrievalWorkshopBaselineDataset(BaseDataset):
         shape_id = shape_info['model']
         positive_id = shape_id
         image_name = shape_info['image']
-        level2_id = shape_info['level2_label']
-        level3_id = shape_info['level3_label']
+        level2_id = self.level2_mapping[shape_info['category']]
+        level3_id = self.level3_mapping[shape_info['fine-grained category']]
         center_label = int(shape_info['model'])
         cate_label = level2_id
         
@@ -155,16 +185,27 @@ class RetrievalWorkshopBaselineDataset(BaseDataset):
             return trans_img
 
 
-    def _load_pool_image_notexture(self, shape_id):
-        syn_id = '{0:03d}'.format(int(0))
-        prob = random.random()
+    # def _load_pool_image_notexture(self, shape_id):
+    #     syn_id = '{0:03d}'.format(int(0))
+    #     prob = random.random()
     
-        img_file = os.path.join(self.bicycle_image_path,  shape_id, 'image_' + syn_id + '.png')
-        
-        img = Image.open(img_file).convert('RGB')
-        trans_img = self.pool_transform(img)
+    #     img_file = os.path.join(self.bicycle_image_path,  shape_id, 'image_' + syn_id + '.png')
+    #     
+    #     img = Image.open(img_file).convert('RGB')
+    #     trans_img = self.pool_transform(img)
 
-        return trans_img
+    #     return trans_img
+
+    def _load_pool_image_notexture(self, shape_id):
+        files = glob.glob(os.path.join(self.bicycle_image_path, shape_id, 'image_*.png'))
+        images = []
+        for img_file in files:
+            img = Image.open(img_file).convert('RGB')
+            trans_img = self.pool_transform(img)
+            images.append(trans_img)
+        model = torch.stack(images)
+        return model.permute(1, 0, 2, 3)
+
 
 
     

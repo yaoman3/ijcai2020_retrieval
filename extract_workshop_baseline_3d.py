@@ -44,7 +44,7 @@ if __name__ == '__main__':
         # result_query_file = os.path.join(opt.result_query_dir, shape_id + '_' + image_name + '.npy')
         result_query_file = os.path.join(opt.result_query_dir, shape_id + '.npy')
 
-        query_feat = model.retrieval_eval('3D')
+        query_feat = model.retrieval_eval('3D')[-1]
         feat = {'feat_query':query_feat.cpu().detach().numpy(), 'shape_id':data['shape_id'][0]}
         
         np.save(result_query_file, feat)

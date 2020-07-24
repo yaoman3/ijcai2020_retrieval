@@ -8,7 +8,7 @@ import pdb
 import torch
 from tqdm import tqdm
 from options.test_options import TestOptions
-from models import create_model
+from models import networks
 
 def normalize_rows(x):
     return x / np.linalg.norm(x, ord=2, axis=-1, keepdims=True)
@@ -50,47 +50,45 @@ count = 0
 top_3_count = 0
 top_10_count = 10
 
-feat_bank_temp = feat_bank.copy()
+# feat_bank_temp = feat_bank.copy()
 # feat_3d_norm = normalize_rows(feat_bank_temp)
 
-opt = TestOptions().parse()  # get test options
-# hard-code some parameters for test
-opt.level2_dic = 'level2_dic_v1.npy'
-opt.level3_dic = 'level3_dic_v1.npy'
-opt.dataset_name = '3d_validation_set.npy' 
-opt.inplanes = 64
-opt.reverse = True
-opt.pose_num = 12
-opt.num_threads = 0   # test code only supports num_threads = 1
-opt.batch_size = 1    # test code only supports batch_size = 1
-opt.serial_batches = True  # disable data shuffling; comment this line if results on randomly chosen images are needed.
-opt.no_flip = True    # no flip; comment this line if results on flipped images are needed.
-opt.display_id = -1   # no visdom display; the test code saves the results to a HTML file.
-model = create_model(opt)      # create a model given opt.model and other options
-model.setup(opt)               # regular setup: load and print networks; create schedulers
-opt.phase = 'eval'
+class Opt:
+    def __init__(self):
+        self.input_dim = 256
 
+opt = Opt()
+gpu_ids = [0]
+
+model = networks.define_retrieval_nets(opt, net_option='match_estimator', gpu_ids=gpu_ids)
+net = model
+if isinstance(net, torch.nn.DataParallel):
+    net = net.module
+net.load_state_dict(torch.load('checkpoints/workshop_baseline_notexture_tuning_v1/latest_net__match_estimator.pth'))
 model.eval()
- 
+
 
 with open('retrieval_results.txt', 'w') as f:
     for i in tqdm(range(len(shape_infos))):
         shape_info = shape_infos[i]
         # 2d feature data
         image_name = shape_info.split('.')[0]
-        
+
         query_path = 'extract_workshop_baseline_notexture_2d_v1/' + image_name + '.npy'
         valid_count += 1
 
-        feat = np.load(query_path, allow_pickle=True).item()
+        feat = np.load(query_path, allow_pickle=True)
         query_feat = torch.tensor(feat[0,:])
-        x = query_feat.expand(shape_num, query_feat.size(0))
-        x = torch.cat((x, feat_bank), dim=1)
+        size = query_feat.size()
+        query_feat = query_feat.expand(shape_num, size[0], size[1], size[2])
+        result = []
+        # print(query_feat.size())
+        # print(feat_bank.size())
         with torch.no_grad():
-            out = model.net_match_estimator(x)
+            out = model([query_feat], [feat_bank])
         out = 1-torch.sigmoid(out)
-        result = out.cpu().detach().tolist()
-       
+        result = out.squeeze().cpu().detach().tolist()
+
         dist_value = ['{:.4}'.format(item) for item in result]
         #dist_value = ['{:f}'.format(item) for item in sample_dist]
         dist_str = ', '.join(dist_value)
@@ -100,7 +98,7 @@ with open('retrieval_results.txt', 'w') as f:
         #         dist_str += value + '\n'
         #     else:
         #         dist_str += value + ', '
-       
+
         line = image_name + ': ' + dist_str
         f.write(line)
 
@@ -111,7 +109,7 @@ with open('retrieval_results.txt', 'w') as f:
         # top_k_id = []
         # for j in range(len(top_k)):
         #     top_k_id.append(shape_pool[top_k[j]])
-        
+
 f.close()
 #np.save('top20_retrieval_workshop_baseline_v1_256.npy', retrieval_results)
 

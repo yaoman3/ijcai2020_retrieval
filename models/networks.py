@@ -146,7 +146,7 @@ def define_retrieval_nets(opt, net_option, init_type='normal', init_gain=0.02, g
     elif net_option == 'further_conv3d':
         net = FurtherConv3D(opt, pose_num=opt.pose_num)
     elif net_option == 'match_estimator':
-        net = MatchEstimation(opt, pose_num=opt.pose_num)
+        net = MatchEstimation(opt)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % net_option)
     return init_net(net, init_type, init_gain, gpu_ids, init=init)
@@ -207,7 +207,7 @@ class Normalize(nn.Module):
     def __init__(self, power=2):
         super(Normalize, self).__init__()
         self.power = power
-    
+
     def forward(self, x):
         norm = x.pow(self.power).sum(1, keepdim=True).pow(1./self.power)
         out = x.div(norm)
@@ -236,7 +236,7 @@ class FurtherConv3D(nn.Module):
                 nn.BatchNorm3d(256),
                 nn.ReLU(inplace=True)
             )
-    
+
     def forward(self, conv_out, return_feat=False):
         f = self.fpn_last_conv(conv_out[-1])
         return [f]
@@ -268,7 +268,7 @@ class CateEstimation(nn.Module):
         self.dropout = nn.Dropout(0.5)
         self.fc = nn.Linear(opt.input_dim, cate_num)
         #self.l2norm = Normalize(2)
-    
+
     def forward(self, conv_out, return_feat=False):
         x = self.avgpool(conv_out[-1])
         f = x.view(x.size(0), -1)

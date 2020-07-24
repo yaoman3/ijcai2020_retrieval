@@ -10,18 +10,19 @@ import torchvision.transforms as transforms
 import pdb
 import torch
 import cv2
+import glob
 from util.smart_crop_transforms import RandomCropDramaticlly
 from util import augment
 
 class RetrievalWorkshopBaselineEval3DDataset(BaseDataset):
     def __init__(self, opt):
         BaseDataset.__init__(self, opt)
-        
+
         # 3d feature
         # self.shapes_info = np.load(os.path.join(opt.dataroot, 'data_info', opt.dataset_name), allow_pickle=True)
 
         self.phase = opt.phase
-        
+
         self.input_2d_path = os.path.join(opt.dataroot, 'input_data')
         self.input_3d_path = os.path.join(opt.dataroot, 'notexture_pool_data')
         self.shapes_info = os.listdir(self.input_3d_path)
@@ -41,19 +42,20 @@ class RetrievalWorkshopBaselineEval3DDataset(BaseDataset):
     def __getitem__(self, index):
 
         shape_id = self.shapes_info[index % self.data_size]
-    
+
         # 3d feature data
         # shape_id = shape_info['shape_id']
         # image_name = shape_info['image']
-        
+
         # query_img = self._load_3d_image(shape_id, image_name)
         query_img = self._load_3d_image(shape_id)
-        
+
         center_label = 0
         cate_label = 0
         view_label = 0
-        
-        return {'shape_id':shape_id, 'image_name': image_name.split('.')[0], 'query_img':query_img, 'center_label':center_label, 'cate_label':cate_label}
+
+        # return {'shape_id':shape_id, 'image_name': image_name.split('.')[0], 'query_img':query_img, 'center_label':center_label, 'cate_label':cate_label}
+        return {'shape_id':shape_id, 'query_img':query_img, 'center_label':center_label, 'cate_label':cate_label}
 
     def __len__(self):
         """Return the total number of images in the dataset.
@@ -62,16 +64,16 @@ class RetrievalWorkshopBaselineEval3DDataset(BaseDataset):
         we take a maximum of
         """
         return self.data_size
- 
+
     def _load_3d_image(self, shape_id, image_name):
         #img_file = os.path.join(self.input_3d_path, shape_id, image_name.split('.')[0] + '.jpg')
         img_file = os.path.join(self.input_3d_path, shape_id, image_name)
-        img = Image.open(img_file).convert('RGB') 
+        img = Image.open(img_file).convert('RGB')
         trans_img = self.query_transform(img)
         return trans_img
 
 
-    def _load_3d_image(self, shape_info):
+    def _load_3d_image(self, shape_id):
         files = glob.glob(os.path.join(self.input_3d_path, shape_id, 'image_*.png'))
         images = []
         for img_file in files:
@@ -81,14 +83,14 @@ class RetrievalWorkshopBaselineEval3DDataset(BaseDataset):
         model = torch.stack(images)
         return model.permute(1, 0, 2, 3)
 
-    
+
     def _load_2d_image(self, image_name):
         img_file = os.path.join(self.input_2d_path, image_name)
         img = Image.open(img_file).convert('RGB')
         trans_img = self.query_transform(img)
         return trans_img
 
-           
+
 class UnNormalize(object):
     def __init__(self, mean, std):
         self.mean = mean
